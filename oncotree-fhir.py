@@ -3,18 +3,14 @@ import requests
 from fhir.resources.codesystem import (
     CodeSystem,
     CodeSystemConcept,
-    CodeSystemConceptDesignation,
     CodeSystemConceptProperty,
 )
-from fhir.resources.fhirelementfactory import FHIRElementFactory
 import argparse
-import sys
 import argparse
 import os
 import textwrap
 from dataclasses import dataclass
 from tqdm import tqdm
-import datetime
 
 
 def parse_args(print_args: bool = True):
@@ -49,12 +45,12 @@ def parse_args(print_args: bool = True):
         "--output",
         "-o",
         help="output file in JSON format. $version is replaced with the version string in filename",
-        default=os.path.join(".", "oncotree-$version.json"),
+        default=os.path.join(".", "$version.json"),
         type=str,
     )
     parser.add_argument(
         "--canonical",
-        help="canonical url of the CodeSystem to generate",
+        help="canonical url of the CodeSystem to generate. For the undated versions, the version string will be appended to this URL",
         default="http://oncotree.mskcc.org/fhir/CodeSystem",
     )
     parser.add_argument(
@@ -143,31 +139,38 @@ def convert_oncotree(args):
     with open(os.path.join(".", "oncotree.tmp.json"), "w") as f:
         json.dump(rx.json(), f, indent=2)
 
+    date_of_version = date_for_version_string(args.version)
+    valueset_url = args.valueset.rstrip("/")
+    codesystem_url = args.canonical.rstrip("/")
+    name = "oncotree"
+
     if args.version in [
         "oncotree_latest_stable",
         "oncotree_candidate_release",
         "oncotree_development",
         "oncotree_legacy_1.1",
     ]:
-        # find out version
-        version = fhir_version_for_version_string(args.version)
+        version = args.version.replace("_", "-")
+        codesystem_url += "/" + args.version
+        valueset_url += "/" + args.version
+        name = args.version
     else:
-        version = args.version.replace("oncotree_", "").replace("_", "-")
+        version = args.version.replace("oncotree_", "").replace("_", "")
 
-    print(f"getting {args.version} (released {version}) from {endpoint}")
+    print(f"getting {args.version} (released {date_of_version}) from {endpoint}")
     print()
 
     json_dict = {
         "resourceType": "CodeSystem",
         "id": args.version.replace("_", "-"),
-        "url": args.canonical,
-        "valueSet": args.valueset,
+        "url": codesystem_url,
+        "valueSet": valueset_url,
         "status": "draft",
         "content": "complete",
-        "name": "oncotree",
+        "name": name,
         "title": "Oncotree",
         "version": version,
-        "date": datetime.date.today().isoformat(),
+        "date": date_of_version,
         "hierarchyMeaning": "is-a",
         "property": [
             {
@@ -241,7 +244,7 @@ def convert_concept(oncotree_concept):
                         "valueString": ", ".join(
                             oncotree_concept["externalReferences"]["UMLS"]
                         ),
-                        # there is at least on concept, SRCCR, that has multiple UMLS and NCI refernces
+                        # there is at least on concept, SRCCR, that has multiple UMLS and NCI references
                     }
                 )
             )
@@ -272,7 +275,7 @@ def write_codesystem(args: argparse.Namespace, cs: CodeSystem):
     print(f"Wrote output to {filepath}")
 
 
-def fhir_version_for_version_string(version_string):
+def date_for_version_string(version_string):
     return [v for v in versions if v["api_identifier"] == version_string][0][
         "release_date"
     ]

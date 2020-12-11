@@ -1,7 +1,11 @@
 {
   "python.pythonPath": "/home/joshua/.venvs/oncotree-fhir/bin/python3",
   "cSpell.words": [
+    "SRCCR",
+    "UMLS",
     "nargs",
-    "oncotree"
+    "oncotree",
+    "tqdm",
+    "tumor"
   ]
 }
