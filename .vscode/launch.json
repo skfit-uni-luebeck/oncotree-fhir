@@ -8,7 +8,7 @@
       "name": "Python: Oncotree FHIR convert-all",
       "type": "python",
       "request": "launch",
-      "program": "${workspaceFolder}/oncotree-fhir.py",
+      "program": "${workspaceFolder}/oncotree_fhir.py",
       "console": "integratedTerminal",
       "args": [
         "--write-tsv",
