@@ -186,6 +186,7 @@ def convert_oncotree(args: argparse.Namespace, version: str = None) -> CodeSyste
     valueset_url = args.valueset.rstrip("/")
     codesystem_url = args.canonical.rstrip("/")
     name = "oncotree"
+    title = "OncoTree"
 
     if version in [
         "oncotree_latest_stable",
@@ -194,9 +195,10 @@ def convert_oncotree(args: argparse.Namespace, version: str = None) -> CodeSyste
         "oncotree_legacy_1.1",
     ]:
         version = version.replace("_", "-")
-        codesystem_url += "/" + version
-        valueset_url += "/" + version
-        name = version
+        codesystem_url += "/" + "snapshot"
+        valueset_url += "/" + "snapshot"
+        name = "oncotree-snapshot"
+        title = "OncoTree Snapshot"
     else:
         version = version.replace("oncotree_", "").replace("_", "")
 
@@ -212,7 +214,7 @@ def convert_oncotree(args: argparse.Namespace, version: str = None) -> CodeSyste
         "status": "draft",
         "content": "complete",
         "name": name,
-        "title": "Oncotree",
+        "title": title,
         "version": version,
         "date": date_of_version,
         "hierarchyMeaning": "is-a",
@@ -240,7 +242,7 @@ def convert_oncotree(args: argparse.Namespace, version: str = None) -> CodeSyste
         ],
         "concept": [],
     }
-    print(json.dumps(json_dict, indent=2))
+    print(json.dumps(json_dict))
     cs = CodeSystem(json_dict)
     print()
     print("Converting concepts...")
