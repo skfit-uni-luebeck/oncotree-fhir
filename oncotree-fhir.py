@@ -11,6 +11,7 @@ import os
 import textwrap
 from dataclasses import dataclass
 from tqdm import tqdm
+from csv import DictWriter
 
 
 def parse_args(print_args: bool = True):
@@ -59,6 +60,16 @@ def parse_args(print_args: bool = True):
         default="http://oncotree.mskcc.org/fhir/ValueSet",
     )
     parser.add_argument(
+        "--write-tsv",
+        help="write the CodeSystem as a TSV file suitable for import into CSIRO's Snapper tool, helpful when creating ConceptMaps or ValueSets referencing Oncotree.",
+        action="store_true"
+    )
+    parser.add_argument(
+        "--tsv-output",
+        default=os.path.join(".", "$version.tsv"),
+        help="output file in TSV format (if --write-tsv given). $version is replaced with the version string in filename"
+    )
+    parser.add_argument(
         "action",
         default="convert",
         # default="versions",
@@ -66,6 +77,7 @@ def parse_args(print_args: bool = True):
         choices=["versions", "convert", "convert-all"],
         help="action to carry out",
     )
+
     args = parser.parse_args()
 
     if print_args:
@@ -157,7 +169,8 @@ def convert_oncotree(args):
     else:
         version = args.version.replace("oncotree_", "").replace("_", "")
 
-    print(f"getting {args.version} (released {date_of_version}) from {endpoint}")
+    print(
+        f"getting {args.version} (released {date_of_version}) from {endpoint}")
     print()
 
     json_dict = {
@@ -263,12 +276,14 @@ def convert_concept(oncotree_concept):
 
 
 def write_codesystem(args: argparse.Namespace, cs: CodeSystem):
-    filename = os.path.expanduser(args.output).replace("$version", args.version)
+    filename = os.path.expanduser(
+        args.output).replace("$version", args.version)
     if os.path.dirname(os.path.abspath(filename)) == os.path.abspath("."):
         filepath = filename
     else:
         filepath = os.path.join(
-            os.path.abspath(os.path.dirname(filename)), os.path.basename(filename)
+            os.path.abspath(os.path.dirname(filename)
+                            ), os.path.basename(filename)
         )
     with open(filepath, "w") as jf:
         json.dump(cs.as_json(), jf, indent=2)
@@ -309,6 +324,25 @@ def print_versions(versions):
     pprint_tree(root_node)
 
 
+def write_tsv_codesystem(args: argparse.Namespace, cs: CodeSystem, version: str):
+    if not args.write_tsv:
+        return
+    fieldnames = ["code", "label", "parent"]
+
+    def parent_for_code(c):
+        p = [p for p in c.property if p.code == "parent"]
+        if any(p):
+            return p[0].valueCode
+    tsv_codes = [{"code": c.code, "label": c.display,
+                  "parent": parent_for_code(c)} for c in cs.concept]
+    tsv_codes.sort(key=lambda c: c["code"])
+    tsv_filename = args.tsv_output.replace("$version", version)
+    with open(tsv_filename, "w") as csvfile:
+        writer = DictWriter(csvfile, fieldnames=fieldnames, delimiter="\t")
+        writer.writerows(tsv_codes)
+    print(f"wrote TSV to {tsv_filename}")
+
+
 if __name__ == "__main__":
     args = parse_args()
     print("\n")
@@ -318,10 +352,12 @@ if __name__ == "__main__":
     elif args.action == "convert":
         cs = convert_oncotree(args)
         write_codesystem(args, cs)
+        write_tsv_codesystem(args, cs, args.version)
     elif args.action == "convert-all":
         for v in versions:
             args.version = v["api_identifier"]
             print(f"Getting version {args.version}")
             cs = convert_oncotree(args)
             write_codesystem(args, cs)
+            write_tsv_codesystem(args, cs, v["api_identifier"])
             print("\n----\n")
