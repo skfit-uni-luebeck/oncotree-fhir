@@ -1,25 +1,28 @@
+"""convert Oncotree to HL7 FHIR CodeSystem resources
+"""
+
 import sys
 import json
+import argparse
+import os
+import textwrap
+from csv import DictWriter
+from typing import Dict, List, Tuple
 import requests
 from fhir.resources.codesystem import (
     CodeSystem,
     CodeSystemConcept,
     CodeSystemConceptProperty,
 )
-import argparse
-import argparse
-import os
-import textwrap
-from dataclasses import dataclass
 from tqdm import tqdm
-from csv import DictWriter
 
 
 def parse_args(print_args: bool = True):
     """create the argument parser
 
     Args:
-        print_args (bool, optional): If true, the arguments will be printed to stdout after parsing. Defaults to True.
+        print_args (bool, optional): If true, the arguments will
+        be printed to stdout after parsing. Defaults to True.
 
     Returns:
         argparse.Namespace: the parsed arguments as a Namespace object
@@ -101,7 +104,15 @@ def parse_args(print_args: bool = True):
 
 
 class TreeNode:
-    def __init__(self, value=None, children=None):
+    """ a node in the version tree graph """
+
+    def __init__(self, value: str = None, children: 'List[TreeNode]' = None):
+        """create a tree node, perhaps with children
+
+        Args:
+            value (str, optional): the text value of the node. Defaults to None.
+            children (List[TreeNode], optional): the children of the node. Defaults to None.
+        """
         if children is None:
             children = []
         self.value, self.children = value, children
@@ -128,7 +139,6 @@ def pprint_tree(node: TreeNode, file=None, _prefix="", _last=True, width=70):
             )
         else:
             return wrapped_value[0]
-        return filled_value
 
     filled_value = wrap_to_width(node.value)
     print(_prefix, "`- " if _last else "|- ", filled_value, sep="", file=file)
@@ -139,44 +149,64 @@ def pprint_tree(node: TreeNode, file=None, _prefix="", _last=True, width=70):
         pprint_tree(child, file, _prefix, _last)
 
 
-def get_versions(args):
+def get_versions(args: argparse.Namespace) -> List[Dict]:
+    """get the list of versions from the respective OncoTree endpoint
+
+    Args:
+        args (argparse.Namespace): the command line args
+
+    Returns:
+        List[Dict]: the list of versions as a (JSON) dict.
+    """
     endpoint = f"{args.url}/versions"
     rx = requests.get(endpoint).json()
     rx.sort(key=lambda x: x["release_date"], reverse=True)
     return rx
 
 
-def convert_oncotree(args):
-    endpoint = f"{args.url}/tumorTypes?version={args.version}"
+def convert_oncotree(args: argparse.Namespace, version: str = None) -> CodeSystem:
+    """convert the oncotree system with given version to FHIR
+
+    Args:
+        args (argparse.Namespace): the command line args
+        version (str, optional): the version string Defaults to None. If not specified, args.version is used
+
+    Returns:
+        CodeSystem: the code system in FHIR R4 format
+    """
+    if version is None:
+        version = args.version
+
+    endpoint = f"{args.url}/tumorTypes?version={version}"
     rx = requests.get(endpoint)
     with open(os.path.join(".", "oncotree.tmp.json"), "w") as f:
         json.dump(rx.json(), f, indent=2)
 
-    date_of_version = date_for_version_string(args.version)
+    date_of_version = date_for_version_string(version)
     valueset_url = args.valueset.rstrip("/")
     codesystem_url = args.canonical.rstrip("/")
     name = "oncotree"
 
-    if args.version in [
+    if version in [
         "oncotree_latest_stable",
         "oncotree_candidate_release",
         "oncotree_development",
         "oncotree_legacy_1.1",
     ]:
-        version = args.version.replace("_", "-")
-        codesystem_url += "/" + args.version
-        valueset_url += "/" + args.version
-        name = args.version
+        version = version.replace("_", "-")
+        codesystem_url += "/" + version
+        valueset_url += "/" + version
+        name = version
     else:
-        version = args.version.replace("oncotree_", "").replace("_", "")
+        version = version.replace("oncotree_", "").replace("_", "")
 
     print(
-        f"getting {args.version} (released {date_of_version}) from {endpoint}")
+        f"getting {version} (released {date_of_version}) from {endpoint}")
     print()
 
     json_dict = {
         "resourceType": "CodeSystem",
-        "id": args.version.replace("_", "-"),
+        "id": version.replace("_", "-"),
         "url": codesystem_url,
         "valueSet": valueset_url,
         "status": "draft",
@@ -221,7 +251,15 @@ def convert_oncotree(args):
     return cs
 
 
-def convert_concept(oncotree_concept):
+def convert_concept(oncotree_concept: Dict) -> CodeSystemConcept:
+    """convert the oncotree concept to a FHIR R4 CodeSystem concept
+
+    Args:
+        oncotree_concept (Dict): the element from the Oncotree API to convert
+
+    Returns:
+        CodeSystemConcept: the element in FHIR R4, with properties
+    """
     concept = CodeSystemConcept(
         {
             "code": oncotree_concept["code"],
@@ -277,34 +315,76 @@ def convert_concept(oncotree_concept):
     return concept
 
 
-def write_codesystem(args: argparse.Namespace, cs: CodeSystem):
-    filename = os.path.expanduser(
-        args.output).replace("$version", args.version)
-    if os.path.dirname(os.path.abspath(filename)) == os.path.abspath("."):
-        filepath = filename
-    else:
-        filepath = os.path.join(
-            os.path.abspath(os.path.dirname(filename)
-                            ), os.path.basename(filename)
-        )
+def write_codesystem(args: argparse.Namespace, cs: CodeSystem, version: str = None):
+    """write the codesystem to a JSON file, as defined by the args
+
+    Args:
+        args (argparse.Namespace): the command line args
+        cs (CodeSystem): the FHIR code system to write
+        version (str): the version string. Default to None. If not specified, args.version is used.
+    """
+    if version is None:
+        version = args.version
+    _, filepath = sanitize_filename(args.output, version)
     with open(filepath, "w") as jf:
         json.dump(cs.as_json(), jf, indent=2)
     print(f"Wrote output to {filepath}")
 
 
-def date_for_version_string(version_string):
+def sanitize_filename(fn: str, version: str) -> Tuple[str, str]:
+    """clean up the filename, add the version string if required (replacing $version) and return the full path to the output file
+
+    Args:
+        fn (str): the filename to sanitize
+        version (str): the version string to add, replacing $version
+
+    Returns:
+        Tuple[str, str]: (filename, filepath)
+    """
+    filename = os.path.expanduser(fn).replace("$version", version)
+    if os.path.dirname(os.path.abspath(filename)) == os.path.abspath("."):
+        filepath = filename
+    else:
+        filepath = os.path.join(
+            os.path.abspath(os.path.dirname(filename)), os.path.basename(filename))
+    return filename, filepath
+
+
+def date_for_version_string(version_string: str) -> str:
+    """find the date a version was released from the versions API response
+
+    Args:
+        version_string (str): the version string to look up
+
+    Returns:
+        str: the release date of the version string, in ISO 8601 format, i.e. "YYYY-MM-DD"
+    """
     return [v for v in versions if v["api_identifier"] == version_string][0][
         "release_date"
     ]
 
 
-def print_versions(versions):
+def print_versions(versions: List[str]):
+    """print all available version from the given oncotree endpoint as a pretty tree
+
+    Args:
+        versions (List[str]): the list of versions to pretty-print
+    """
     endpoint = f"{args.url}/versions"
     visible_versions = [x for x in versions if x["visible"]]
     invisible_versions = [x for x in versions if not x["visible"]]
     root_node = TreeNode(f"available versions from {endpoint}")
 
-    def print_version_strings(prefix: str, versions):
+    def print_version_strings(prefix: str, versions: List[Dict]) -> TreeNode:
+        """helper function to print a version string with a given, common, prefix
+
+        Args:
+            prefix (str): the prefix, for example "2020 versions" or "current releases", that the releases are grouped under
+            versions (List[Dict]): the list of versions to pretty-print under the prefix
+
+        Returns:
+            TreeNode: the tree node containing the prefix with respective child nodes
+        """
         root = TreeNode(prefix)
         for version in versions:
             node = TreeNode(
@@ -326,20 +406,41 @@ def print_versions(versions):
     pprint_tree(root_node)
 
 
-def write_tsv_codesystem(args: argparse.Namespace, cs: CodeSystem, version: str):
+def write_tsv_codesystem(args: argparse.Namespace, cs: CodeSystem, version: str) -> None:
+    """write the codesystem to a JSON file, as defined by the args (or return immediately if no TSV files should be written)
+
+    Args:
+        args (argparse.Namespace): the command line args
+        cs (CodeSystem): the FHIR CS to write
+        version (str): the version string of this file
+
+    Returns:
+        None
+    """
     if not args.write_tsv:
-        return
+        return None
     fieldnames = ["code", "label", "parent"]
 
-    def parent_for_code(c):
+    def parent_for_code(c: str) -> str:
+        """helper function to return the parent of a FHIR code system concept
+
+        Args:
+            c (str): the concept to extract the property for
+
+        Returns:
+            str: the code of the parent, or None
+        """
         p = [p for p in c.property if p.code == "parent"]
         if any(p):
             return p[0].valueCode
+        return None
+
     tsv_codes = [{"code": c.code, "label": c.display,
                   "parent": parent_for_code(c)} for c in cs.concept]
     tsv_codes.sort(key=lambda c: c["code"])
-    tsv_filename = args.tsv_output.replace("$version", version)
-    with open(tsv_filename, "w") as csvfile:
+    #tsv_filename = args.tsv_output.replace("$version", version)
+    tsv_filename, tsv_path = sanitize_filename(args.tsv_output, version)
+    with open(tsv_path, "w") as csvfile:
         writer = DictWriter(csvfile, fieldnames=fieldnames, delimiter="\t")
         writer.writerows(tsv_codes)
     print(f"wrote TSV to {tsv_filename}")
@@ -357,9 +458,9 @@ if __name__ == "__main__":
         write_tsv_codesystem(args, cs, args.version)
     elif args.action == "convert-all":
         for v in versions:
-            args.version = v["api_identifier"]
-            print(f"Getting version {args.version}")
-            cs = convert_oncotree(args)
+            version = v["api_identifier"]
+            print(f"Getting version {version}")
+            cs = convert_oncotree(args, version)
             write_codesystem(args, cs)
-            write_tsv_codesystem(args, cs, v["api_identifier"])
+            write_tsv_codesystem(args, cs, version)
             print("\n----\n")
