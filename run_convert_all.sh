@@ -43,6 +43,6 @@ echo "dependencies installed"
 echo ""
 echo "running convert-all process"
 
-cmdline="python oncotree-fhir.py --output=output/\$version.json --write-tsv --tsv-output=./output/\$version.tsv convert-all"
+cmdline="python oncotree_fhir.py --output=output/\$version.json --write-tsv --tsv-output=./output/\$version.tsv convert-all"
 echo "command line: $cmdline"
 $cmdline
