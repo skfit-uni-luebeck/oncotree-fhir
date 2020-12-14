@@ -12,6 +12,8 @@
       "console": "integratedTerminal",
       "args": [
         "--write-tsv",
+        "--output=output/$version.json",
+        "--tsv-output=output/$version.tsv",
         "convert-all"
       ]
     }

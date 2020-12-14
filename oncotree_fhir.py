@@ -461,6 +461,7 @@ if __name__ == "__main__":
             version = v["api_identifier"]
             print(f"Getting version {version}")
             cs = convert_oncotree(args, version)
-            write_codesystem(args, cs)
+            write_codesystem(args, cs, version)
             write_tsv_codesystem(args, cs, version)
             print("\n----\n")
+            sys.stdout.flush()
