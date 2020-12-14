@@ -1,3 +1,4 @@
+import sys
 import json
 import requests
 from fhir.resources.codesystem import (
@@ -213,6 +214,7 @@ def convert_oncotree(args):
     cs = CodeSystem(json_dict)
     print()
     print("Converting concepts...")
+    sys.stdout.flush()
     for concept in tqdm(rx.json()):
         fhir_concept = convert_concept(concept)
         cs.concept.append(fhir_concept)

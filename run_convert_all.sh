@@ -19,7 +19,7 @@ fi
 if [ ! -d $venvs_dir ]
 then
   mkdir $venvs_dir
-  echo "created virtual environment parent directory in $(realpath ~/.venvs)"
+  echo "created virtual environment parent directory in $venvs_dir"
 fi
 
 if [ ! $(which python3) ]
