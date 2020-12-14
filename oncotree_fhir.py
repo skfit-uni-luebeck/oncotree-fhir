@@ -194,13 +194,13 @@ def convert_oncotree(args: argparse.Namespace, version: str = None) -> CodeSyste
         "oncotree_development",
         "oncotree_legacy_1.1",
     ]:
-        version = version.replace("_", "-")
+        fhir_version = version.replace("_", "-")
         codesystem_url += "/" + "snapshot"
         valueset_url += "/" + "snapshot"
         name = "oncotree-snapshot"
         title = "OncoTree Snapshot"
     else:
-        version = version.replace("oncotree_", "").replace("_", "")
+        fhir_version = version.replace("oncotree_", "").replace("_", "")
 
     print(
         f"getting {version} (released {date_of_version}) from {endpoint}")
@@ -215,7 +215,7 @@ def convert_oncotree(args: argparse.Namespace, version: str = None) -> CodeSyste
         "content": "complete",
         "name": name,
         "title": title,
-        "version": version,
+        "version": fhir_version,
         "date": date_of_version,
         "hierarchyMeaning": "is-a",
         "property": [
